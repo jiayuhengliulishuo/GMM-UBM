@@ -1,0 +1,74 @@
+01: 
+******************************************************
+第一行产生non－native随机的样本,共48万个训练样本（trainFileDir，存放的是绝对地址，eg：/data/EN_CH_sent_201411/audio_sample/519a5296524444953e01930d/50fd02f5fcfff2a63300000c_50fd02f5fcfff2a63300000d_519a5296524444953e01930d_high_0.raw）和5万个测试样本（testFilDir）。 训练数据写入traindir_sample_random_cn中，9万个样本。测试数据写入testdir_sample_random_cn中，全部写入，5万多个样本
+第二行产生native的随机样本,57万训练样本（traindir，存放的是相对地址，eg：99000067377684_engzo_92_95_1.0_android），最后写入train_sample_en 中，9万个样本。
+第三行把natie 和 non native的样本放入指定文件夹,把第一行把产生的traindir_sample_random_cn复制到当前文件夹，把第二行产生的train_sample
+_en文件复制到当前文件夹
+第四行产生lst文件。输入non native文件traindir_sample_random_cn和native文件traindir_sample_en。输出文件data.lst(输出的是绝对地址，不含后缀名 eg：/data/VOXPOP_EN_US_sent_201404/train/traindata/156d858a579edca4241e1abf89c38c525a6dfc4b_engzo_424_88_0.62_ios ),输出文件dataPur.lst(相对地址，即文件名  eg:156d858a579edca4241e1abf89c38c525a6dfc4b_engzo_424_88_0.62_ios),输出文件，native_all.lst(纯的native filename,即文件名 eg ：4549_engzo_2443_ios)， non_all.lst(纯的non_native，即文件名 eg ：5218ab5dfcfff21cda001bb9_5218ab5dfcfff21cda001bba_5235d0be52444442ca0218ad_76_iOS_1)
+第五行产生特征(acoustic feature )文件:输入为绝对地址文件名，data/data.lst(data.lst 中是绝对地址)，生成特征文件之后，把特征移动到/data/prm 中  后缀名字是tmp.prm
+
+******************************************************
+sudo python /data/EN_CH_sent_201411/gen_random_sample.py
+python /data/VOXPOP_EN_US_sent_201404/train/gen_train_sample_random.py
+bash /data/jiayuheng/score/experiment/experiment1/data/cplst.sh 
+python /data/jiayuheng/score/experiment/experiment1/data/mklst.py
+sudo bash 01_RUN_feature_extraction.sh
+
+02:
+*****************************************************
+第一行检查每个特征文件tmp.prm的大小，输出文件大小和文件名，写入到dataCheck.lst文件中（eg:124K    ./prm/156d858a579edca4241e1abf89c38c525a6dfc4b_engzo_424_88_0.62_ios.tmp.prm  18万行）
+第二行,去除空的文件。从dataCheck.lst（大小＋特征文件名）产生dataPure0.lst(数据量从18万降低到了17万九千七百个样本,生成纯文件名eg：4655_engzo_2512_ios)
+
+第三行生成去除静音文件的归一化特征,分三步，
+第一步是Normalise energy,对能量进行归一化（配置文件是cfg/NormFeat_energy_SPro.cfg ，输入文件名是data/dataPure0.lst 输入文件地址是data/prm/ 输入文件是.tmp.prm 输出文件是能量归一化文件 .enr.tmp.prm）
+,第二步是Energy Detector,检测the highest energy（配置文件是cfg/EnergyDetector_SPro.cfg ，输入文件名是data/dataPure0.lst 输入文件地址是data/prm/ 输入文件后缀是.enr.tmp.prm  输出文件是非静音文件.lbl 输出文件地址是/data/lbl
+）第三步是Normalise Features,对非静音文件进行特征归一化（配置文件是cfg/NormFeat_SPro.cfg ，输入文件名是data/dataPure0.lst 输入文件地址是data/prm/ .另外还需要输入 lbl文件 data/lbl 输出文件是与一化特征文件.norm.prm  输出文件地址是/data/prm）
+*****************************************************
+
+bash /data/jiayuheng/score/experiment/experiment1/data/duCheck.sh
+python /data/jiayuheng/score/experiment/experiment1/data/dataCheck0.py
+bash 02_RUN_spro_front-end.sh
+
+03:
+************************************
+you need to profile the file cfg/TrainWorld.cfg ,cfg/TrainTarget.cfg , cfg/ComputeTest_GMM.cfg
+
+第一行程序需要 分为三部分 
+第一部分训练UBM,程序是TrainWorld，配置文件是cfg/TrainWorld.cfg  输出log文件log/TrainWorld_512_5.log 输入特征文件是格式是.norm.prm 输出为gmm文件 输入文件为 data/dataPuro0_10000.lst(十万个文件) 输出文件名为 world512_5
+第二部分训练每种语言的GMM，程序是TrainTarget，配置文件为cfg/TrainTarget.cfg  输入的ndx文件是 /ndx/trainModel_noWarning_all.ndx（ndx文件为运行没有warning的文件eg :native_noWarning_all    4567_engzo_2623_android） 输入的gmm(UBM)文件是 world512_5.gmm 输出的文件是non_noWarning_all and native_noWarning_all ，在训练SV的时候，也要用到这个函数 
+第三部分计算likelihood ratio ，程序是ComputeTest 配置文件是cfg/ComputeTest_GMM.cfg ,输入的ndx文件是 ndx/computetest_gmm_target-seg_noWarning_all.ndx （eg : 4661_engzo_2306_ios non_noWarning_all native_noWarning_all） 输出文件是:res/target-seg_gmm_all.res (eg: M non_noWarning_all 0 4386_engzo_2120_android -0.104226  此处只需要关注第四列和第五列，第四列是文件名，第五列是分数) 
+***********************************
+bash 03_RUN_gmm-ubm.sh
+
+
+
+以上为通用设置，一下分别为likelihod ratio 和svm两种方法的使用
+
+04:likelihood ratio 用于分类
+***********************************
+代码获取一个模型的UBM (non native 和native 分别获取一个UBM。或者说每个都得到一个GMMvi)
+然后分别计算基于这个模型的likelihood ratio ，最后计算，对比，即可完成
+
+在计算likelihood ratio时 配置文件是 cfg/gmm_result.cfg，都使用模型world2048_5_noWarning_native.gmm  输入为ndx/computetest_gmm_target-seg_noWarning_native_non.ndx(eg: 4118_engzo_1502_ios world2048_5_noWarning_native world2048_5_noWarning_non) 结果为res/gmm_result.res
+***********************************
+bash gmm_result.sh
+注：后续操作尚未列出，有待补充
+
+ 
+05: svm 分类
+对于svm例子，
+第一计算每一个语句的gmm模型,使用trainTarget来训练每个utternce的gmm,配置文件为cfg/TrainTarget_utterance.cfg ,输入ndx文件为./ndx/trainModel_noWarning_all_utterance.ndx , 输出gmm地址是gmm/sv_gmm  log文件地址是:log/TrainTarget_utterance.log ，输入GMM（UBM）地址是gmm/sv_gmm/word512_5,[ndx/mkndx_sv可以 产生 ndx文件]
+第二先把gmm转换成sv,需要用到函数ModelToSv 程序暂时写到modeltosv,配置文件cfg/ModelToSv.cfg log文件为log/ModelToSv.log 中 
+第三用svm进行分类，对sv数据进行分类，分类器是svm,首先训练svm，配置文件是cfg/svm_train.cfg，log文件是log/svm_train.log
+********注意**********
+使用Svm函数的时候需要下载libsvm，并且Copy svm.cpp and svm.h into the src directory of LIA_RAL/LIA_Utils/Svm/.  then type make （svm的参数可以修改,然后重新make）
+*********************
+
+
+06 打分算法
+思路是利用GMMM－UBM中的分数做一个回归分析
+或者利用支持向量机得到的特征（or 利用最后的分数做一个回归分析，此处就要用一些标签数据了）
+实践证明，用这个方法来打分，效果不好，因为相关性非常低（0.02）
+
+
+
